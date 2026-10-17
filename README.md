@@ -1,5 +1,7 @@
 # mp4 compressor — v0.4 release candidate
 
+![mp4 compressor UI preview](assets/mp4-compressor-ui.png)
+
 **Arch Linux / KDE Plasma / Wayland. One native Rust GUI, no JS, WebView, Node, server or cloud.**
 Actual compression is performed by installed `ffmpeg` and `ffprobe` executables (not bundled).
 
