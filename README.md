@@ -28,15 +28,15 @@ To build from source instead:
 sudo pacman -S --needed rustup base-devel pkgconf ffmpeg xdg-desktop-portal-kde xdg-utils
 rustup default stable
 ./scripts/verify.sh
-./target/release/mp4rust-native
+./target/release/mp4-compressor
 ```
 
 For a display-free smoke test after compilation:
 
 ```bash
-./target/release/mp4rust-native --check
+./target/release/mp4-compressor --check
 ./scripts/smoke.sh
-./target/release/mp4rust-native --headless --mode balanced 'video.mp4'
+./target/release/mp4-compressor --headless --mode balanced 'video.mp4'
 ```
 
 Modes: **Smart** (sample x264 + FFmpeg libvmaf, or SSIM fallback), **Balanced** (CPU x264 CRF 20), **Fast** (requires functioning NVIDIA h264_nvenc), **Manual** (user-selected x264 CRF). Smart uses SSIM when FFmpeg lacks `libvmaf`, and explicitly falls back to Balanced if neither `libvmaf` nor `ssim` / `ffv1` is available. Other Smart search errors are shown as failures rather than hidden as successes.
@@ -87,7 +87,7 @@ VMAF scoring is CPU-heavy and Smart is slower than Balanced CPU.
 Fast NVIDIA now uses a 320×240 real encode to probe NVENC instead of 64×64
 (which NVENC can reject). If unavailable it **explicitly** falls back to CPU
 and exposes FFmpeg's diagnostic in the job message. For local diagnostics run
-`./target/release/mp4rust-native --check`, `nvidia-smi`, and:
+`./target/release/mp4-compressor --check`, `nvidia-smi`, and:
 
 ```bash
 ffmpeg -hide_banner -f lavfi -i 'color=c=black:s=320x240:r=30' -frames:v 3 -c:v h264_nvenc -f null -
@@ -108,4 +108,4 @@ external dependencies. Drag-and-drop uses X11/XWayland on KDE Plasma.
 For a desktop launcher, copy `assets/mp4-compressor.desktop` to
 `~/.local/share/applications/` and `assets/mp4-compressor-256.png` to
 `~/.local/share/icons/hicolor/256x256/apps/mp4-compressor.png`; ensure the
-`mp4rust-native` binary can be found on PATH.
+`mp4-compressor` binary can be found on PATH.

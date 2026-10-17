@@ -3,8 +3,8 @@ set -euo pipefail
 cd "$(dirname "$0")/.."
 command -v ffmpeg >/dev/null
 command -v ffprobe >/dev/null
-[[ -x target/release/mp4rust-native ]] || cargo build --release
-bin="$PWD/target/release/mp4rust-native"
+[[ -x target/release/mp4-compressor ]] || cargo build --release
+bin="$PWD/target/release/mp4-compressor"
 work="$(mktemp -d)"
 trap 'rm -rf "$work"' EXIT
 ffmpeg -hide_banner -loglevel error -y \

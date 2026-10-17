@@ -1,15 +1,15 @@
 mod app;
 mod icon;
 
-use mp4rust_native::encode::{Mode, Settings};
-use mp4rust_native::{process, worker};
+use mp4_compressor::encode::{Mode, Settings};
+use mp4_compressor::{process, worker};
 use std::path::PathBuf;
 use std::sync::{atomic::AtomicBool, mpsc, Arc};
 
 fn main() -> eframe::Result<()> {
     let args: Vec<String> = std::env::args().skip(1).collect();
     if args.iter().any(|x| x == "--help") {
-        println!("mp4rust-native [--check] [--headless INPUT ...] [--mode auto|balanced|fast|manual] [--crf 20]");
+        println!("mp4-compressor [--check] [--headless INPUT ...] [--mode auto|balanced|fast|manual] [--crf 20]");
         return Ok(());
     }
     if args.iter().any(|x| x == "--check") {

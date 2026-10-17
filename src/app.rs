@@ -1,6 +1,6 @@
 use eframe::egui::{self, Color32, FontId, Pos2, Rect, Stroke, Vec2};
-use mp4rust_native::encode::{Mode, Settings};
-use mp4rust_native::worker::{self, Event};
+use mp4_compressor::encode::{Mode, Settings};
+use mp4_compressor::worker::{self, Event};
 use std::path::PathBuf;
 use std::process::{Command, Stdio};
 use std::sync::{
@@ -63,7 +63,7 @@ fn panel() -> egui::Frame {
 }
 
 fn read_preview(path: &PathBuf) -> Preview {
-    let media = mp4rust_native::probe::inspect(path).ok();
+    let media = mp4_compressor::probe::inspect(path).ok();
     let (dimensions, duration) = match media {
         Some(ref m) => (
             format!(

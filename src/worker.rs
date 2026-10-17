@@ -177,7 +177,7 @@ fn process_one(
         return Err("Cancelled".into());
     }
     let temp = tempfile::Builder::new()
-        .prefix(".mp4rust-working-")
+        .prefix(".mp4-compressor-working-")
         .tempdir_in(dest_dir)
         .map_err(|e| format!("Cannot create output temporary directory: {e}"))?;
     let candidate = temp.path().join("encoded.mp4");

@@ -6,6 +6,8 @@ on:
 jobs:
   build:
     runs-on: ubuntu-24.04
+    env:
+      RUSTFLAGS: --remap-path-prefix=${{ github.workspace }}=/src --remap-path-prefix=/home/runner/.cargo=/cargo
     permissions:
       contents: write
     steps:
@@ -27,10 +29,12 @@ jobs:
       - run: cargo build --release
       - name: Smoke test
         run: bash scripts/smoke.sh
+      - name: Public preflight
+        run: bash scripts/preflight.sh
       - name: GUI startup smoke test under Xvfb
         run: |
           set +e
-          LIBGL_ALWAYS_SOFTWARE=1 xvfb-run -a timeout 8s target/release/mp4rust-native > /tmp/mp4-compressor-gui.log 2>&1
+          LIBGL_ALWAYS_SOFTWARE=1 xvfb-run -a timeout 8s target/release/mp4-compressor > /tmp/mp4-compressor-gui.log 2>&1
           result=$?
           set -e
           if [ "$result" -ne 124 ]; then cat /tmp/mp4-compressor-gui.log; exit 1; fi
@@ -38,7 +42,7 @@ jobs:
         continue-on-error: true
         run: |
           xvfb-run -a -s "-screen 0 1280x1024x24" bash -c '
-            LIBGL_ALWAYS_SOFTWARE=1 target/release/mp4rust-native &
+            LIBGL_ALWAYS_SOFTWARE=1 target/release/mp4-compressor &
             pid=$!
             sleep 4
             ffmpeg -hide_banner -loglevel error -f x11grab -video_size 1280x1024 -i "$DISPLAY" -frames:v 1 ui-screenshot.png -y
@@ -52,8 +56,8 @@ jobs:
           if-no-files-found: ignore
       - uses: actions/upload-artifact@v4
         with:
-          name: mp4rust-native-linux
-          path: target/release/mp4rust-native
+          name: mp4-compressor-linux
+          path: target/release/mp4-compressor
       - name: Commit formatting and lock file after successful test
         if: "${{ github.event_name == 'push' && github.ref == 'refs/heads/main' }}"
         run: |
@@ -65,9 +69,9 @@ jobs:
             git push origin HEAD:main
           fi
   publish:
-    name: Publish v0.4.0 RC3
+    name: Publish v0.4.0 RC4
     needs: build
-    if: "${{ github.event_name == 'push' && github.ref == 'refs/heads/main' && contains(github.event.head_commit.message, 'release: v0.4.0-rc.3') }}"
+    if: "${{ github.event_name == 'push' && github.ref == 'refs/heads/main' && contains(github.event.head_commit.message, 'release: v0.4.0-rc.4') }}"
     runs-on: ubuntu-24.04
     permissions:
       contents: write
@@ -75,16 +79,16 @@ jobs:
       - uses: actions/checkout@v4
       - uses: actions/download-artifact@v4
         with:
-          name: mp4rust-native-linux
+          name: mp4-compressor-linux
           path: dist
       - name: Publish Linux executable and icon
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          mv dist/mp4rust-native dist/mp4-compressor-linux-x86_64
+          mv dist/mp4-compressor dist/mp4-compressor-linux-x86_64
           chmod 0755 dist/mp4-compressor-linux-x86_64
           cp assets/mp4-compressor-256.png dist/
           cp assets/mp4-compressor.desktop dist/
           tar -czf mp4-compressor-linux-x86_64.tar.gz -C dist .
           tar -tvzf mp4-compressor-linux-x86_64.tar.gz | grep -q '^-rwx.*mp4-compressor-linux-x86_64$'
-          gh release create v0.4.0-rc.3             dist/mp4-compressor-linux-x86_64             dist/mp4-compressor-256.png             dist/mp4-compressor.desktop             mp4-compressor-linux-x86_64.tar.gz             --repo "$GITHUB_REPOSITORY"             --target "$GITHUB_SHA"             --title "mp4 compressor v0.4.0 RC3 (Linux)"             --notes "Native Rust/egui UI redesign based on approved dark mockup. New clapperboard icon, asynchronous video thumbnails, larger drop target, Mode/Output panels and accessible progress controls. FFmpeg and ffprobe required. KDE Wayland uses XWayland. GUI startup smoke-tested in Xvfb; actual KDE DnD and NVIDIA acceleration still require local verification."             --prerelease
+          gh release create v0.4.0-rc.4             dist/mp4-compressor-linux-x86_64             dist/mp4-compressor-256.png             dist/mp4-compressor.desktop             mp4-compressor-linux-x86_64.tar.gz             --repo "$GITHUB_REPOSITORY"             --target "$GITHUB_SHA"             --title "mp4 compressor v0.4.0 RC4 (Linux)"             --notes "Canonical mp4-compressor naming is used throughout the source, launcher, CI artifacts, and Linux release. FFmpeg and ffprobe are required. KDE Wayland uses XWayland."             --prerelease

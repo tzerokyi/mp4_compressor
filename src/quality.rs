@@ -168,7 +168,7 @@ pub fn search(
     }
     let threshold = metric.cutoff(target);
     let tmp = tempfile::Builder::new()
-        .prefix("mp4rust-samples-")
+        .prefix("mp4-compressor-samples-")
         .tempdir()
         .map_err(|e| format!("Sample temp directory: {e}"))?;
     let mut folders = Vec::new();

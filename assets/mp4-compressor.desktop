@@ -2,7 +2,7 @@
 Type=Application
 Name=mp4 compressor
 Comment=Offline video compression
-Exec=mp4rust-native
+Exec=mp4-compressor
 Icon=mp4-compressor
 Terminal=false
 Categories=AudioVideo;Video;
