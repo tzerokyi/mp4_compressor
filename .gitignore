@@ -1,0 +1,7 @@
+/target/
+*.partial.mp4
+/.idea/
+/.vscode/
+*.md
+!README.md
+AGENTS.md

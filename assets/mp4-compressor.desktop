@@ -1,0 +1,9 @@
+[Desktop Entry]
+Type=Application
+Name=mp4 compressor
+Comment=Offline video compression
+Exec=mp4rust-native
+Icon=mp4-compressor
+Terminal=false
+Categories=AudioVideo;Video;
+MimeType=video/mp4;video/x-matroska;video/quicktime;
