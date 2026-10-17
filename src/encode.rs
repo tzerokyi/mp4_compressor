@@ -162,7 +162,7 @@ mod tests {
             audio: None,
         };
         let args = final_encode_args(
-            Path::new("한글 sample.mp4"),
+            Path::new("source sample.mp4"),
             Path::new("sample out.mp4"),
             &m,
             Mode::Manual,
@@ -170,7 +170,7 @@ mod tests {
         );
         assert!(args
             .iter()
-            .any(|a| a.as_os_str() == std::ffi::OsStr::new("한글 sample.mp4")));
+            .any(|a| a.as_os_str() == std::ffi::OsStr::new("source sample.mp4")));
         assert_eq!(
             args.last().unwrap().as_os_str(),
             std::ffi::OsStr::new("sample out.mp4")
