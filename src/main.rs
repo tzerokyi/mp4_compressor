@@ -9,7 +9,7 @@ use std::sync::{atomic::AtomicBool, mpsc, Arc};
 fn main() -> eframe::Result<()> {
     let args: Vec<String> = std::env::args().skip(1).collect();
     if args.iter().any(|x| x == "--help") {
-        println!("mp4-compressor [--check] [--headless INPUT ...] [--mode auto|balanced|fast|manual] [--crf 20]");
+        println!("mp4-compressor [--check] [--headless INPUT ...] [--mode auto|balanced|fast|manual] [--reduction 80] [--crf 25]");
         return Ok(());
     }
     if args.iter().any(|x| x == "--check") {
@@ -44,6 +44,18 @@ fn main() -> eframe::Result<()> {
                         eprintln!("Invalid CRF: {raw}");
                         std::process::exit(2);
                     });
+                }
+                "--reduction" => {
+                    idx += 1;
+                    let raw = args.get(idx).map(String::as_str).unwrap_or("");
+                    settings.reduction_percent = raw
+                        .parse::<u8>()
+                        .ok()
+                        .filter(|value| *value <= 95)
+                        .unwrap_or_else(|| {
+                            eprintln!("Reduction must be an integer from 0 to 95: {raw}");
+                            std::process::exit(2);
+                        });
                 }
                 raw if raw.starts_with("--") => {
                     eprintln!("Unknown argument: {raw}");

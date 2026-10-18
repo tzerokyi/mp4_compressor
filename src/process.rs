@@ -127,27 +127,8 @@ fn encoder_names() -> &'static String {
     })
 }
 
-fn filter_names() -> &'static String {
-    static FILTERS: OnceLock<String> = OnceLock::new();
-    FILTERS.get_or_init(|| {
-        Command::new("ffmpeg")
-            .args(["-hide_banner", "-filters"])
-            .output()
-            .ok()
-            .filter(|o| o.status.success())
-            .map(|o| String::from_utf8_lossy(&o.stdout).into_owned())
-            .unwrap_or_default()
-    })
-}
-
 pub fn has_encoder(name: &str) -> bool {
     encoder_names()
-        .lines()
-        .any(|s| s.split_whitespace().nth(1) == Some(name))
-}
-
-pub fn has_filter(name: &str) -> bool {
-    filter_names()
         .lines()
         .any(|s| s.split_whitespace().nth(1) == Some(name))
 }
@@ -202,15 +183,11 @@ pub fn check_dependencies() -> String {
         .is_ok_and(|o| o.status.success());
     let x264 = has_encoder("libx264");
     let aac = has_encoder("aac");
-    let ffv1 = has_encoder("ffv1");
-    let vmaf = has_filter("libvmaf");
     let nvenc = match nvenc_probe() {
         Ok(()) => "available".to_string(),
         Err(reason) => format!("unavailable: {reason}"),
     };
-    format!(
-        "ffprobe={ffprobe}, libx264={x264}, aac={aac}, ffv1={ffv1}, libvmaf={vmaf}, NVENC={nvenc}"
-    )
+    format!("ffprobe={ffprobe}, libx264={x264}, aac={aac}, NVENC={nvenc}")
 }
 
 #[cfg(test)]

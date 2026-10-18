@@ -29,6 +29,8 @@ jobs:
       - run: cargo build --release
       - name: Smoke test
         run: bash scripts/smoke.sh
+      - name: Compression regression benchmark
+        run: bash scripts/benchmark.sh
       - name: Public preflight
         run: bash scripts/preflight.sh
       - name: GUI startup smoke test under Xvfb
@@ -58,20 +60,10 @@ jobs:
         with:
           name: mp4-compressor-linux
           path: target/release/mp4-compressor
-      - name: Commit formatting and lock file after successful test
-        if: "${{ github.event_name == 'push' && github.ref == 'refs/heads/main' }}"
-        run: |
-          git config user.name "github-actions[bot]"
-          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add -A src Cargo.lock
-          if ! git diff --cached --quiet; then
-            git commit -m "style: format v0.4.0 sources and lockfile"
-            git push origin HEAD:main
-          fi
   publish:
-    name: Publish v0.4.0 RC4
+    name: Publish v0.5.0 RC1
     needs: build
-    if: "${{ github.event_name == 'push' && github.ref == 'refs/heads/main' && contains(github.event.head_commit.message, 'release: v0.4.0-rc.4') }}"
+    if: "${{ github.event_name == 'push' && github.ref == 'refs/heads/main' && contains(github.event.head_commit.message, 'release: v0.5.0-rc.1') }}"
     runs-on: ubuntu-24.04
     permissions:
       contents: write
@@ -91,4 +83,4 @@ jobs:
           cp assets/mp4-compressor.desktop dist/
           tar -czf mp4-compressor-linux-x86_64.tar.gz -C dist .
           tar -tvzf mp4-compressor-linux-x86_64.tar.gz | grep -q '^-rwx.*mp4-compressor-linux-x86_64$'
-          gh release create v0.4.0-rc.4             dist/mp4-compressor-linux-x86_64             dist/mp4-compressor-256.png             dist/mp4-compressor.desktop             mp4-compressor-linux-x86_64.tar.gz             --repo "$GITHUB_REPOSITORY"             --target "$GITHUB_SHA"             --title "mp4 compressor v0.4.0 RC4 (Linux)"             --notes "Canonical mp4-compressor naming is used throughout the source, launcher, CI artifacts, and Linux release. FFmpeg and ffprobe are required. KDE Wayland uses XWayland."             --prerelease
+          gh release create v0.5.0-rc.1             dist/mp4-compressor-linux-x86_64             dist/mp4-compressor-256.png             dist/mp4-compressor.desktop             mp4-compressor-linux-x86_64.tar.gz             --repo "$GITHUB_REPOSITORY"             --target "$GITHUB_SHA"             --title "mp4 compressor v0.5.0 RC1 (Linux)"             --notes "New target-reduction 0–95% control: CPU precise 2-pass, CPU quick 1-pass and NVENC VBR. Targets are not quality guarantees. FFmpeg and ffprobe are required. KDE Wayland uses XWayland."             --prerelease
