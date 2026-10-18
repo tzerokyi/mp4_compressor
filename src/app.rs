@@ -43,6 +43,7 @@ pub struct App {
     icon: egui::TextureHandle,
     jobs: Vec<JobRow>,
     settings: Settings,
+    reduction_input: String,
     preview_tx: mpsc::Sender<Preview>,
     preview_rx: mpsc::Receiver<Preview>,
     receive: Option<mpsc::Receiver<Event>>,
@@ -153,6 +154,7 @@ impl App {
             icon: crate::icon::texture(&cc.egui_ctx),
             jobs: Vec::new(),
             settings: Settings::default(),
+            reduction_input: "80".to_owned(),
             preview_tx,
             preview_rx,
             receive: None,
@@ -283,9 +285,9 @@ impl App {
                     output,
                     before,
                     after,
-                    note: _,
+                    note,
                 } => {
-                    self.set_state(&input, "Completed".to_owned());
+                    self.set_state(&input, format!("Completed · {note}"));
                     if let Some(row) = self.jobs.iter_mut().find(|row| row.path == input) {
                         row.saved = Some((1.0 - after as f64 / before.max(1) as f64) * 100.0);
                         row.output_bytes = Some(after);
@@ -485,7 +487,8 @@ impl App {
                                                     .size(11.5),
                                             )
                                             .truncate(),
-                                        );
+                                        )
+                                        .on_hover_text(&job.state);
                                     }
                                 },
                             );
@@ -560,8 +563,8 @@ impl App {
                     ui.label(egui::RichText::new("⚙  Mode").strong().size(17.0));
                     ui.add_space(4.0);
                     let specs = [
-                        (Mode::Auto, "Smart"),
-                        (Mode::Balanced, "Balanced CPU"),
+                        (Mode::Auto, "Precise CPU"),
+                        (Mode::Balanced, "Quick CPU"),
                         (Mode::Fast, "Fast NVIDIA"),
                         (Mode::Manual, "Manual"),
                     ];
@@ -597,12 +600,11 @@ impl App {
                                 mode,
                                 if selected { PRIMARY } else { MUTED },
                             );
-                            let label = if name == "Balanced CPU" {
-                                "Balanced\nCPU"
-                            } else if name == "Fast NVIDIA" {
-                                "Fast\nNVIDIA"
-                            } else {
-                                name
+                            let label = match name {
+                                "Precise CPU" => "Precise\nCPU",
+                                "Quick CPU" => "Quick\nCPU",
+                                "Fast NVIDIA" => "Fast\nNVIDIA",
+                                _ => name,
                             };
                             painter.text(
                                 Pos2::new(c.x, rect.top() + 58.0),
@@ -630,18 +632,45 @@ impl App {
                                 );
                             });
                         }
-                        Mode::Auto => {
-                            ui.horizontal(|ui| {
-                                ui.label(egui::RichText::new("Quality").color(MUTED).size(12.0));
-                                ui.add_enabled(
-                                    !self.running,
-                                    egui::Slider::new(&mut self.settings.vmaf_target, 90.0..=98.0)
-                                        .step_by(0.5),
-                                );
-                            });
-                        }
                         _ => {
-                            ui.add_space(30.0);
+                            ui.horizontal(|ui| {
+                                ui.label(egui::RichText::new("Reduce").color(MUTED).size(12.0));
+                                let slider_width = (ui.available_width() - 90.0).max(65.0);
+                                let slider = ui
+                                    .add_enabled_ui(!self.running, |ui| {
+                                        ui.add_sized(
+                                            [slider_width, 20.0],
+                                            egui::Slider::new(
+                                                &mut self.settings.reduction_percent,
+                                                0..=95,
+                                            )
+                                            .show_value(false),
+                                        )
+                                    })
+                                    .inner;
+                                if slider.changed() {
+                                    self.reduction_input =
+                                        self.settings.reduction_percent.to_string();
+                                }
+                                let field = ui.add_enabled(
+                                    !self.running,
+                                    egui::TextEdit::singleline(&mut self.reduction_input)
+                                        .desired_width(44.0)
+                                        .horizontal_align(egui::Align::Center),
+                                );
+                                if field.changed() {
+                                    if let Ok(value) = self.reduction_input.trim().parse::<u8>() {
+                                        if value <= 95 {
+                                            self.settings.reduction_percent = value;
+                                        }
+                                    }
+                                }
+                                if field.lost_focus() {
+                                    self.reduction_input =
+                                        self.settings.reduction_percent.to_string();
+                                }
+                                ui.label(egui::RichText::new("%").color(MUTED));
+                            });
                         }
                     }
                 });
@@ -713,7 +742,7 @@ impl App {
                     ui.add_enabled_ui(!self.running, |ui| {
                         ui.checkbox(
                             &mut self.settings.discard_if_larger,
-                            "Keep only smaller results",
+                            "Skip files larger than the source",
                         );
                     });
                 });

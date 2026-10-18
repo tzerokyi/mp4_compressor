@@ -1,8 +1,9 @@
-use crate::encode::{final_encode_args, Mode, Settings};
-use crate::{probe, process, quality};
+use crate::encode::{self, encode_args, Mode, Pass, RateControl, Settings};
+use crate::{probe, process};
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{mpsc::Sender, Arc};
+use std::time::Instant;
 
 #[derive(Debug)]
 pub enum Event {
@@ -69,6 +70,7 @@ fn process_one(
     tx: &Sender<Event>,
     cancel: &AtomicBool,
 ) -> Result<Option<(PathBuf, u64, u64, String)>, String> {
+    let started_at = Instant::now();
     emit(
         tx,
         Event::Stage(input.to_owned(), "Inspecting source".into(), 0.0),
@@ -87,9 +89,9 @@ fn process_one(
         return Err(format!("Output folder missing: {}", dest_dir.display()));
     }
     let requested_mode = settings.mode;
-    let (real_mode, crf, note) = match requested_mode {
+    let (real_mode, mut note) = match requested_mode {
         Mode::Fast => match process::nvenc_probe() {
-            Ok(()) => (Mode::Fast, 23, "Hardware NVENC / CQ 23".to_string()),
+            Ok(()) => (Mode::Fast, "NVENC VBR p3".to_string()),
             Err(reason) => {
                 emit(
                     tx,
@@ -101,77 +103,32 @@ fn process_one(
                 );
                 (
                     Mode::Balanced,
-                    20,
                     format!("CPU fallback (NVENC unavailable: {reason})"),
                 )
             }
         },
-        Mode::Auto
-            if process::has_encoder("ffv1")
-                && (process::has_filter("libvmaf") || process::has_filter("ssim")) =>
-        {
-            let metric = if process::has_filter("libvmaf") {
-                quality::Metric::Vmaf
-            } else {
-                quality::Metric::Ssim
-            };
-            let outcome = quality::search(
-                input,
-                media.duration,
-                metric,
-                settings.vmaf_target,
-                cancel,
-                |fraction, progress_msg| {
-                    emit(
-                        tx,
-                        Event::Stage(input.to_owned(), progress_msg.to_owned(), fraction),
-                    );
-                },
-            )?;
-            let note = if outcome.met_target {
-                format!(
-                    "Smart {}: CRF {}, sample score {:.4}",
-                    metric.name(),
-                    outcome.crf,
-                    outcome.score
-                )
-            } else {
-                format!(
-                    "Smart {}: target {:.2} NOT met (sample {:.2}); CRF {} best-effort quality",
-                    metric.name(),
-                    metric.cutoff(settings.vmaf_target),
-                    outcome.score,
-                    outcome.crf
-                )
-            };
-            (Mode::Balanced, outcome.crf, note)
-        }
-        Mode::Auto => {
-            emit(
-                tx,
-                Event::Stage(
-                    input.to_owned(),
-                    "VMAF/SSIM/FFV1 missing; explicit fallback to CRF 20".into(),
-                    0.0,
-                ),
-            );
-            (
-                Mode::Balanced,
-                20,
-                "Quality measurement unavailable: used CRF 20".to_string(),
-            )
-        }
-        Mode::Balanced => (Mode::Balanced, 20, "CPU x264 CRF 20".to_string()),
+        Mode::Auto => (Mode::Auto, "CPU x264 2-pass".to_string()),
+        Mode::Balanced => (Mode::Balanced, "CPU x264 1-pass".to_string()),
         Mode::Manual => {
             if !(14..=35).contains(&settings.crf) {
                 return Err("CRF must be 14..35".into());
             }
-            (
-                Mode::Manual,
-                settings.crf,
-                format!("Manual CRF {}", settings.crf),
-            )
+            (Mode::Manual, format!("Manual x264 CRF {}", settings.crf))
         }
+    };
+    let rate = if real_mode == Mode::Manual {
+        RateControl::QualityCrf(settings.crf)
+    } else {
+        let bps = encode::target_video_bitrate(&media, settings.reduction_percent)?;
+        let target_mb = encode::estimated_target_bytes(media.bytes, settings.reduction_percent)
+            as f64
+            / 1_000_000.0;
+        note = format!(
+            "{note}, target -{}% ({target_mb:.1} MB), video {:.2} Mb/s",
+            settings.reduction_percent,
+            bps as f64 / 1_000_000.0
+        );
+        RateControl::TargetBitrate(bps)
     };
     if cancel.load(Ordering::Relaxed) {
         return Err("Cancelled".into());
@@ -181,20 +138,88 @@ fn process_one(
         .tempdir_in(dest_dir)
         .map_err(|e| format!("Cannot create output temporary directory: {e}"))?;
     let candidate = temp.path().join("encoded.mp4");
-    let args = final_encode_args(input, &candidate, &media, real_mode, crf);
+    if real_mode == Mode::Auto {
+        let logs = temp.path().join("x264-pass");
+        let args = encode_args(
+            input,
+            &candidate,
+            &media,
+            real_mode,
+            rate,
+            Some(Pass {
+                number: 1,
+                log_prefix: &logs,
+            }),
+            false,
+        );
+        emit(
+            tx,
+            Event::Stage(input.to_owned(), "Pass 1/2 · bitrate analysis".into(), 0.0),
+        );
+        process::run_ffmpeg(&args, None, cancel, |seconds| {
+            emit(
+                tx,
+                Event::Progress(
+                    input.to_owned(),
+                    (seconds as f64 / media.duration * 0.5).clamp(0.0, 0.5) as f32,
+                ),
+            );
+        })?;
+    }
+    let logs = temp.path().join("x264-pass");
+    let pass = (real_mode == Mode::Auto).then_some(Pass {
+        number: 2,
+        log_prefix: &logs,
+    });
+    let cuda_decode = real_mode == Mode::Fast && encode::can_try_cuda_decode(&media);
+    let args = encode_args(
+        input,
+        &candidate,
+        &media,
+        real_mode,
+        rate,
+        pass,
+        cuda_decode,
+    );
     emit(
         tx,
-        Event::Stage(input.to_owned(), format!("Encoding ({note})"), 0.0),
+        Event::Stage(
+            input.to_owned(),
+            format!("Encoding ({note})"),
+            if real_mode == Mode::Auto { 0.5 } else { 0.0 },
+        ),
     );
-    process::run_ffmpeg(&args, None, cancel, |seconds| {
+    let progress = |seconds: f32| {
         emit(
             tx,
             Event::Progress(
                 input.to_owned(),
-                (seconds as f64 / media.duration).clamp(0.0, 0.99) as f32,
+                ((seconds as f64 / media.duration).clamp(0.0, 0.99)
+                    * if real_mode == Mode::Auto { 0.49 } else { 0.99 }
+                    + if real_mode == Mode::Auto { 0.5 } else { 0.0 }) as f32,
             ),
         );
-    })?;
+    };
+    if let Err(first_error) = process::run_ffmpeg(&args, None, cancel, progress) {
+        if !cuda_decode || cancel.load(Ordering::Relaxed) {
+            return Err(first_error);
+        }
+        emit(
+            tx,
+            Event::Stage(
+                input.to_owned(),
+                format!("CUDA decode failed; retrying NVENC with CPU decode ({first_error})"),
+                0.0,
+            ),
+        );
+        let retry = encode_args(input, &candidate, &media, real_mode, rate, pass, false);
+        process::run_ffmpeg(&retry, None, cancel, |_| {})?;
+        note.push_str(" (CPU decode / NVENC encode)");
+    } else if cuda_decode {
+        note.push_str(" (CUDA decode / NVENC encode)");
+    } else if real_mode == Mode::Fast {
+        note.push_str(" (CPU decode / NVENC encode)");
+    }
     if cancel.load(Ordering::Relaxed) {
         return Err("Cancelled".into());
     }
@@ -233,6 +258,11 @@ fn process_one(
     if settings.discard_if_larger && check.bytes >= media.bytes {
         return Ok(None);
     }
+    let elapsed = started_at.elapsed().as_secs_f64().max(0.001);
+    let final_note = format!(
+        "{note} · {elapsed:.1}s ({:.1}x realtime)",
+        media.duration / elapsed
+    );
     let stem = input
         .file_stem()
         .and_then(|s| s.to_str())
@@ -248,7 +278,7 @@ fn process_one(
             continue;
         }
         match std::fs::hard_link(&candidate, &output) {
-            Ok(()) => return Ok(Some((output, media.bytes, check.bytes, note))),
+            Ok(()) => return Ok(Some((output, media.bytes, check.bytes, final_note))),
             Err(e) if e.kind() == std::io::ErrorKind::AlreadyExists => continue,
             Err(_) => match copy_no_replace(&candidate, &output) {
                 Ok(true) => {
@@ -256,7 +286,7 @@ fn process_one(
                         output,
                         media.bytes,
                         check.bytes,
-                        format!("{note} (copy fallback)"),
+                        format!("{final_note} (copy fallback)"),
                     )))
                 }
                 Ok(false) => continue,

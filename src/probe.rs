@@ -12,6 +12,7 @@ pub struct Stream {
     pub width: Option<u32>,
     pub height: Option<u32>,
     pub avg_frame_rate: Option<String>,
+    pub bit_rate: Option<String>,
     #[serde(default)]
     pub tags: serde_json::Value,
     #[serde(default)]
